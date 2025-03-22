@@ -1,12 +1,12 @@
-import requests as rq
-import json
+import requests
+from bs4 import BeautifulSoup
 
-url = 'https://comic.naver.com/api/webtoon/titlelist/new?order=update'
+url = 'https://www.naver.com'
 
-headers = {"referer" : "https://comic.naver.com/webtoon",\
-           "user-agent" : "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
-
-response = rq.get(url, headers=headers)
+response = requests.get(url)
 if response.status_code == 200:
-    data = json.loads(response.text)
-    print(data)
+    html = response.text
+    soup = BeautifulSoup(html, 'lxml')
+    print(soup.title.string)
+else :
+    print(response.status_code)
