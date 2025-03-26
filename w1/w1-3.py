@@ -11,5 +11,6 @@ for item in items[:5]:
     description = item.select_one('div.b-1int8gb > a > p')
     print('-'*100)
     print(f'제목 : {title.text}')
+    print()
     print(f'내용 : \n{description.text}')
     print('-'*100)

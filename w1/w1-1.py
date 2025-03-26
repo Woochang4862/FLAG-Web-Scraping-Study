@@ -22,3 +22,5 @@ print(soup.title.string)
 print(soup.find('h1').string)
 print(soup.find('p').string)
 print(soup.find('ul').find_all('li'))
+
+print(soup.children)
