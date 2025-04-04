@@ -10,7 +10,7 @@ if response.status_code == 200:
     soup = BeautifulSoup(html, 'lxml')
     items = soup.select('#__next > main > section > ul.fig-wzw9xn.eis6k7i0 > li')
     for item in items:
-        title = item.select_one('div > div.b-o96tbl > div.b-1fj4gry > a')
+        title = item.select_one('div > div.b-o96tbl > div.b-1fj4gry > a') # None
         if not title:
             title = item.select_one('div')
         print(title.text)

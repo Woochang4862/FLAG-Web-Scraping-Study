@@ -12,6 +12,7 @@ for item in items[:5]:
     description = item.select_one('div > div:nth-of-type(2) > div:nth-of-type(2) > a > p')
     link = item.select_one('div > div:nth-of-type(1) > a')
     # url 에 경로 연결
+    # book_link = "https://ridibooks.com" + link.get('href')
     book_link = urllib.parse.urljoin(url, link.get('href'))
     print('-'*100)
     print(f'제목 : {title.text}')
