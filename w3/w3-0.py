@@ -12,9 +12,9 @@ print(response.request.headers)
 # 요청이 성공했는지 확인
 if response.status_code == 200:
     # 파일로 저장
-    if not os.path.exists("output"):
-        os.makedirs("output")
-    with open("output/naver.ico", "wb") as file:
+    if not os.path.exists("../output"):
+        os.makedirs("../output")
+    with open("../output/naver.ico", "wb") as file:
         file.write(response.content)
     print("파일 다운로드 완료")
 else:
