@@ -1,13 +1,11 @@
-import requests
-from bs4 import BeautifulSoup
-import certifi
 from dotenv import load_dotenv
 import os
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import time  # 파일 상단에 추가
+from selenium.webdriver.common.keys import Keys
+import time
 
 # .env 파일 로드
 load_dotenv()
@@ -133,7 +131,8 @@ def go_to_subjects_list(driver):
     
     return driver
 
-def set_filter(driver):
+def get_subjects_list(driver):
+    subjects_list = []
     iframe = WebDriverWait(driver, 10).until(
             EC.presence_of_element_located((By.XPATH, '//*[@id="windowContainer1_subWindow1_iframe"]'))
     )
@@ -147,62 +146,39 @@ def set_filter(driver):
     
     driver.switch_to.frame(iframe)
     
-    college_button = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, "//div[@id='schLcls_label']"))
-    )
-    college_button.click()
-    
-    ict_button = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, "//td[@id='schLcls_itemTable_16']"))
-    )
-    ict_button.click()
-    
-    
-    major_button = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, "//div[@id='schMcls_label']"))
-    )
-    major_button.click()
-    
-    ds_button = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, "//td[@id='schMcls_itemTable_1']"))
-    )
-    ds_button.click()
-    
     search_button = WebDriverWait(driver, 10).until(
         EC.presence_of_element_located((By.XPATH, "//div[@id='group59']"))
     )
     search_button.click()
     
-    time.sleep(10)
-    
-    table = WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.XPATH, "//tbody[@id='grid1_body_tbody']"))
+    WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.XPATH, "//tbody[@id='grid1_body_tbody']/tr"))
     )
     
-    rows = table.find_elements(By.TAG_NAME, "tr")
-    for row in rows:
-        cells = row.find_elements(By.TAG_NAME, "td")
-        # check 속성 체크
-        print(cells[15].is_selected())
-        # 뒤 부터 삭제해서 아래 인덱스 번호가 변경되지 않도록 함
-        del cells[15]
-        del cells[13]
-        del cells[:2]
-        print(','.join(map(lambda cell : cell.text, cells)))
+    table = driver.find_element(By.XPATH, "//tbody[@id='grid1_body_tbody']")
     
-    return driver
+    first_row = table.find_element(By.CSS_SELECTOR, "tr > td:nth-of-type(3)")
+    if first_row:
+        first_row.click()
+    else:
+        raise Exception("첫 번째 행을 찾을 수 없습니다.")
+    
+    while True:
+        rows = table.find_elements(By.TAG_NAME, "tr")
+        if not rows:
+            break
+        if subjects_list and rows[-1].text == subjects_list[-1]:
+            break
+        
+        for row in rows:
+            subjects_list.append(row.text)
+            
+        first_row.send_keys(Keys.PAGE_DOWN)
+        time.sleep(1)
+
+    return driver, subjects_list
 
 def main():
-    # 포털 로그인
-    # session = get_portal_session()
-    # if session:
-    #     print("세션이 성공적으로 생성되었습니다.")
-    #     # info 페이지 접속
-    #     # access_info_page(session)
-    #     # 세션 정보 출력
-    #     print(session.cookies)
-    #     print(session.headers)
-    
     driver = login_with_selenium(os.getenv('PORTAL_ID'), os.getenv('PORTAL_PASSWORD'))
     
     driver = go_to_info_page(driver)
@@ -211,7 +187,12 @@ def main():
     
     driver = go_to_subjects_list(driver)
     
-    driver = set_filter(driver)
+    driver, subjects_list = get_subjects_list(driver)
+    
+    # subjects_list 를 txt 파일로 저장
+    with open('../output/subjects_list.txt', 'w', encoding='utf-8') as f:
+        for subject in subjects_list:
+            f.write(subject + '\n')
 
 if __name__ == "__main__":
     main()
