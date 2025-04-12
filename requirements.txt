@@ -3,3 +3,5 @@ beautifulsoup4==4.12.2
 python-dotenv==1.0.0
 selenium==4.11.0
 lxml==4.9.4
+pytest==7.4.3
+pytest-mock==3.14.0

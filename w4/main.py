@@ -1,184 +1,132 @@
-import requests
-import json
-from dotenv import load_dotenv
+import sys
 import os
-from selenium import webdriver
+
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
+from w4.env import load_dotenv
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
-import time
 from selenium.common.exceptions import TimeoutException
+import time
 
-# .env 파일 로드
+from scraping.selenium_login import login_with_selenium
+from scraping.selenium_utils import switch_to_new_window, get_requests_session_with_cookies, initialize_driver
+from scraping.api_interaction import fetch_subjects_api
+from utils.file_utils import save_json
+
+# .env 파일 로드 (환경 변수 사용)
 load_dotenv()
 
-def login_with_selenium(user_id, password):
-    driver = webdriver.Chrome()  # 또는 다른 브라우저 드라이버
-    driver.get("http://portal.suwon.ac.kr/enview/index.html")
-
-    # 명시적으로 mainFrame이 로드될 때까지 기다립니다.
-    WebDriverWait(driver, 10).until(
-        EC.presence_of_element_located((By.NAME, "mainFrame"))
-    )
-
-    driver.switch_to.frame("mainFrame")
-
-    # 로그인 폼 입력
-    username_field = driver.find_element(By.NAME, "userId")
-    password_field = driver.find_element(By.NAME, "pwd")
-
-    username_field.send_keys(user_id)
-    password_field.send_keys(password)
-
-    # 로그인 버튼 클릭
-    login_button = driver.find_element(By.CLASS_NAME, "mainbtn_login")
-    login_button.click()
-
-    # 로그인 후 페이지 로딩 및 세션 설정 대기
-    try:
-        WebDriverWait(driver, 20).until(
-            EC.presence_of_element_located((By.XPATH, "//div[@class='header']"))
-        )
-        print("로그인 후 메인 페이지 로딩 확인됨")
-    except TimeoutException:
-        print("로그인 후 메인 페이지 로딩 시간 초과 또는 요소 찾기 실패")
-        # 필요하다면 여기서 에러 처리 또는 드라이버 종료
-        driver.quit()
-        raise Exception("로그인 실패") # 로그인 실패 처리
-
-    return driver
-
 def go_to_info_page(driver):
+    """로그인 후 정보 페이지로 이동합니다."""
     try:
+        # 헤더의 정보 버튼이 클릭 가능할 때까지 대기
         info_button = WebDriverWait(driver, 10).until(
             EC.element_to_be_clickable((By.XPATH, "//div[@class='header']/div/div/ul/li[1]"))
         )
+        # 정보 버튼 클릭
         info_button.click()
         print("정보 버튼 클릭 성공.")
-        return driver
     except TimeoutException:
+        # 지정된 시간 내에 버튼을 찾거나 클릭할 수 없는 경우
         print("정보 버튼을 찾거나 클릭하는 데 실패했습니다.")
-        raise Exception("정보 버튼 클릭 실패") # 더 이상 진행 불가
-  
-def switch_to_new_window(driver):
-    original_window = driver.current_window_handle
-    for handle in driver.window_handles:
-        if handle != original_window:
-            driver.switch_to.window(handle)
-            return driver
-    
-def fetch_subjects_with_requests(driver):
-    """Selenium 드라이버에서 쿠키를 가져와 requests를 사용해 강의 목록 API를 호출합니다."""
-    selenium_cookies = driver.get_cookies()
-    requests_session = requests.Session()
-
-    # Selenium 쿠키를 requests 세션에 추가
-    for cookie in selenium_cookies:
-        # 'expiry' 키가 있으면 정수로 변환 (requests는 float을 지원하지 않음)
-        if 'expiry' in cookie:
-            cookie['expires'] = int(cookie['expiry'])
-            del cookie['expiry']
-        # 'httpOnly', 'secure'는 boolean이어야 함
-        if 'httpOnly' in cookie:
-             cookie['httpOnly'] = bool(cookie['httpOnly'])
-        if 'secure' in cookie:
-             cookie['secure'] = bool(cookie['secure'])
-        # requests가 인식하지 못하는 키 ('httpOnly' 제외) 제거
-        cookie_args = {k: v for k, v in cookie.items() if k in ['name', 'value', 'domain', 'path', 'expires', 'secure']}
-        requests_session.cookies.set(**cookie_args)
-
-
-    headers = {
-        'Accept': 'application/json',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Connection': 'keep-alive',
-        'Content-Type': 'application/json; charset="UTF-8"',
-        'Origin': 'https://info.suwon.ac.kr',
-        'Referer': 'https://info.suwon.ac.kr/websquare/websquare.jsp?w2xPath=/views/usw/sa/su/SA_SU_4017.xml&w2xHome=/views/&w2xDocumentRoot=',
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-origin',
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
-        'sec-ch-ua': '"Google Chrome";v="135", "Not-A.Brand";v="8", "Chromium";v="135"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"macOS"',
-        'submissionid': 'sub1',
-    }
-    data = {
-        "subjtEstbSmrCd": "10", # 학기 코드 1학기 : 10, 여름학기 : 15, 2학기 : 20, 겨울학기 : 25
-        "subjtEstbYear": "2025", # 학년도
-        #"lCls": "2000574", # 단과대학 코드 2000574 : 지능형SW융합대학
-        #"mCls": "2000595", # 학부 코드 2000595 : 데이터과학부
-        #"sCls": "", # 학과 코드 컴퓨터SW : 2000644 / 
-        #"trgtGrdeCd": "1", # 학년
-        #"dayCd": "2", # 요일 코드 2 : 월요일 / 3 : 화요일 / 4 : 수요일 / 5 : 목요일 / 6 : 금요일 / 7 : 토요일
-        #"ltrPrdCd": "1", # 교시 코드
-        "subjtCd": "", # 과목 코드
-        "reprPrfsEno": "", # 교수 이름 혹은 사번
-    }
-    url = 'https://info.suwon.ac.kr/estbLectDtai/listVEstbLectDtai.do'
-
-    try:
-        response = requests_session.post(url, headers=headers, json=data)
-        response.raise_for_status() # 오류 발생 시 예외 발생
-        subjects_data = response.json()
-        print("API 요청 성공")
-        return subjects_data
-    except requests.exceptions.RequestException as e:
-        print(f"API 요청 실패: {e}")
-        # API 응답 내용을 함께 출력하여 디버깅에 도움
-        if response is not None:
-            print(f"Response status code: {response.status_code}")
-            print(f"Response text: {response.text}")
-        return None
-    except json.JSONDecodeError:
-        print("JSON 파싱 실패")
-        print(f"Response text: {response.text}")
-        return None
-
-def save_json(json_data):
-    if json_data:
-        # subjects_data 를 JSON 파일로 저장
-        output_dir = '../output'
-        os.makedirs(output_dir, exist_ok=True) # Ensure output directory exists
-        output_file = os.path.join(output_dir, 'subjects_list.json')
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(json_data, f, ensure_ascii=False, indent=4)
-        print(f"데이터를 {output_file} 에 저장했습니다.")
-    else:
-        print("데이터를 가져오지 못했습니다.")
-
+        raise Exception("정보 버튼 클릭 실패") # 오류 발생시키고 종료
 
 def main():
-    driver = None # driver 변수 초기화
+    driver = None # Selenium 웹 드라이버 변수 초기화
+    session = None # requests 세션 변수 초기화
     try:
-        driver = login_with_selenium(os.getenv('PORTAL_ID'), os.getenv('PORTAL_PASSWORD'))
+        # --- 드라이버 초기화 --- 
+        driver = initialize_driver() # Initialize driver here
+        
+        # --- 1단계: Selenium으로 포털 로그인 --- 
+        portal_id = os.getenv('PORTAL_ID') # .env 파일에서 아이디 읽기
+        portal_password = os.getenv('PORTAL_PASSWORD') # .env 파일에서 비밀번호 읽기
+        # 환경 변수 설정 확인
+        if not portal_id or not portal_password:
+            # Quit driver if env vars are missing
+            if driver: driver.quit()
+            raise ValueError("PORTAL_ID와 PORTAL_PASSWORD가 .env 파일에 설정되어야 합니다.")
 
+        # 로그인 함수 호출 (driver 주입)
+        login_with_selenium(driver, portal_id, portal_password)
         print("로그인 성공. 정보 페이지로 이동 중...")
 
-        driver = go_to_info_page(driver)
+        # --- 2단계: 정보 페이지로 이동 --- 
+        go_to_info_page(driver)
 
-        # 새 창 또는 탭이 열릴 때까지 잠시 대기
-        time.sleep(3) # 로딩 시간에 따라 조절 필요
-        
-        # 새 창으로 전환
-        driver = switch_to_new_window(driver)
-        print(f"새 창으로 전환 성공. 현재 URL: {driver.current_url}")
-        
-        WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.XPATH, "//span[@id='treeMenu_label_3']"))
-        )
-        print("새 창 로딩 완료. 쿠키 추출 및 API 요청 시작...")
+        # --- 3단계: 새 창/탭으로 전환 --- 
+        print("새 창/탭으로 전환 시도 중...")
+        # 새 창이 완전히 열릴 시간을 확보하기 위해 잠시 대기 (필요에 따라 조절)
+        time.sleep(3) 
+        switch_to_new_window(driver)
+        print(f"새 창으로 전환 완료. 현재 URL: {driver.current_url}")
 
-        subjects_data = fetch_subjects_with_requests(driver)
+        # --- 4단계: 새 창의 특정 요소 로딩 대기 --- 
+        print("새 창의 콘텐츠 로딩 대기 중...")
+        try:
+            WebDriverWait(driver, 15).until(
+                EC.visibility_of_element_located((By.TAG_NAME, "body"))
+            )
+            print("새 창의 필요한 요소 로딩 완료.")
+        except TimeoutException:
+             print("새 창에서 특정 요소 로딩 시간 초과. API 요청을 계속 시도합니다.")
+             raise Exception("새 창에서 특정 요소 로딩 시간 초과")
 
-        save_json(subjects_data)
+        # --- 5단계: Selenium 쿠키를 사용하여 requests 세션 생성 --- 
+        print("쿠키 추출 및 requests 세션 생성 중...")
+        session = get_requests_session_with_cookies(driver)
+        if not session or not session.cookies:
+             print("경고: 쿠키가 추출되지 않았거나 세션 생성에 실패했습니다. API 요청이 실패할 수 있습니다.")
+             raise Exception("쿠키 추출 실패")
 
+        # --- 6단계: API 요청 정보 준비 --- 
+        api_url = 'https://info.suwon.ac.kr/estbLectDtai/listVEstbLectDtai.do' # 대상 API URL
+        api_data = { # API 요청 본문(payload)
+            "subjtEstbSmrCd": "10", # 학기 코드 1학기 : 10, 여름학기 : 15, 2학기 : 20, 겨울학기 : 25
+            "subjtEstbYear": "2025", # 학년도
+            # "lCls": "2000574", # 단과대학 코드 2000574 : 지능형SW융합대학
+            # "mCls": "2000596", # 학부 코드 2000595 : 데이터과학부 / 2000596 : 컴퓨터공학부 / 2000597 : 정보통신학부
+            # "sCls": "2000644", # 학과 코드 2000644 : 컴퓨터SW / 미디어SW : 2000645
+            # "trgtGrdeCd": "1", # 학년
+            # "dayCd": "2", # 요일 코드 2 : 월요일 / 3 : 화요일 / 4 : 수요일 / 5 : 목요일 / 6 : 금요일 / 7 : 토요일
+            # "ltrPrdCd": "1", # 교시 코드
+            "subjtCd": "", # 과목 코드
+            "reprPrfsEno": "", # 교수 이름 혹은 사번
+        }
+        api_headers = { # 특정 API에 필요한 추가/수정 헤더
+            'Origin': 'https://info.suwon.ac.kr',
+            'Referer': 'https://info.suwon.ac.kr/websquare/websquare.jsp?w2xPath=/views/usw/sa/su/SA_SU_4017.xml', # Referer 헤더가 중요
+            'submissionid': 'sub1',
+        }
+
+        # --- 7단계: API 호출하여 데이터 가져오기 --- 
+        print(f"API를 통해 강의 정보 요청 시작: {api_url}")
+        subjects_data = fetch_subjects_api(session, api_url, api_data, custom_headers=api_headers)
+
+
+        # --- 8단계: 결과 저장 --- 
+        if subjects_data:
+             # 가져온 데이터를 JSON 파일로 저장 (최상위 'output' 디렉토리에)
+             output_path = os.path.join(project_root, 'output') 
+             save_json(subjects_data, filename='subjects_list.json', output_dir=output_path) 
+        else:
+             print("API로부터 데이터를 받지 못해 파일을 저장하지 않습니다.")
+
+    except Exception as e:
+        # 스크립트 실행 중 발생하는 모든 예외 처리
+        print(f"스크립트 실행 중 오류 발생: {e}")
+        # 디버깅을 위해 상세한 오류 로그 출력 가능
+        # import traceback
+        # traceback.print_exc()
     finally:
+        # --- 9단계: 리소스 정리 --- 
+        # 오류 발생 여부와 관계없이 항상 브라우저 종료
         if driver:
             driver.quit()
             print("브라우저 종료")
 
 if __name__ == "__main__":
-    main() 
+    main()
