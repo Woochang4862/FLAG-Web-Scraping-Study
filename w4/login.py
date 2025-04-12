@@ -8,10 +8,9 @@ sys.path.insert(0, project_root)
 
 from scraping.selenium_utils import initialize_driver
 from scraping.selenium_login import login_with_selenium
+import dotenv
 
-import w4.env as env
-
-env.load_dotenv()
+dotenv.load_dotenv()
 
 # 테스트 드라이버 생성
 driver = initialize_driver()
